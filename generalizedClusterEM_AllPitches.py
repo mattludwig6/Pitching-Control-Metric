@@ -54,6 +54,12 @@ def bootstrapped_df(df):
 def likelihood(pi, x, y, mu, var):
     return pi * mvn.pdf([x, y], mean=mu, cov=var)
 
+def gmm_density(gmm, x, z):
+    like = 0
+    for i in range(len(gmm.weights_)):
+        like += gmm.weights_[i] * mvn.pdf([x, z], mean=gmm.means_[i], cov=gmm.covariances_[i])
+    return like
+
 def control_metric(data, pis, mus, variances):
     metric = 0
     for index, row in data.iterrows():
@@ -123,18 +129,24 @@ def create_rankings():
             single_ranking(total_df, pitch, hand)
             
 #compute control value for particular pitcher, pitch, handedness of batter
-#NOTE: this has variability based on train/test split, so there's a confidence interval in ranking
 def specific_control(pitcher, pitch, hand):
     total_df = pd.read_csv("FullPitchData2023.csv")
     filtered_df = total_df[(total_df["player_name"] == pitcher) & (total_df["pitch_type"] == pitch) & (total_df["stand"] == hand)]
     filtered_df = filtered_df[["plate_x","plate_z"]]
     filtered_df = remove_outliers(filtered_df)
-    train, test = train_test_split(filtered_df, test_size=0.2)
-    k = optimal_k(train, test)
-    fitted_gmm = fit_em(bootstrapped_df(filtered_df), k)
-    return control_metric(filtered_df, fitted_gmm.weights_, fitted_gmm.means_, fitted_gmm.covariances_)   
+    B = 100
+    dist_dict = {}
+    controls = np.zeros(B)
+    for i in range(B):
+        train, test = train_test_split(filtered_df, test_size=0.2)
+        k = optimal_k(train, test)
+        fitted_gmm = fit_em(bootstrapped_df(filtered_df), k)
+        c_value = control_metric(filtered_df, fitted_gmm.weights_, fitted_gmm.means_, fitted_gmm.covariances_)
+        controls[i] = c_value
+        dist_dict[c_value] = fitted_gmm
+    return controls[49], dist_dict[controls[49]]
 
-#visualize the distribution
+#visualize the distribution, change name of figure to save as on last line
 def true_density(fitted_gmm):
     grid = [(x/100, y/100) for x in range(-150, 150) for y in range(150, 450)]
     weights = np.zeros(len(grid))
@@ -146,4 +158,55 @@ def true_density(fitted_gmm):
         z[w] = grid[w][1]
     
     pitches = pd.DataFrame({"x":x, "z":z, "density":weights})
-    sns.kdeplot(data=pitches, x="x", y="z", weights = "density", fill=True, thresh=0, levels=100, cmap="mako")
+    kde = sns.kdeplot(data=pitches, x="x", y="z", weights = "density", fill=True, thresh=0, levels=100, cmap="mako")
+    fig = kde.get_figure()
+    fig.savefig("KirbyRHBFF2023.png")
+    
+#get overall distribution for 1-0 fastballs against RHB
+def overall_specific_case(pitch, b, s, hand):
+    total_df = pd.read_csv("FullPitchData2023.csv")
+    filtered_df = total_df[(total_df["balls"] == b) & (total_df["strikes"] == s) & (total_df["pitch_type"] == pitch) & (total_df["stand"] == hand)]
+    filtered_df = filtered_df[["plate_x","plate_z"]]
+    filtered_df = remove_outliers(filtered_df)
+    train, test = train_test_split(filtered_df, test_size=0.2)
+    k = optimal_k(train, test)
+    fitted_gmm = fit_em(bootstrapped_df(filtered_df), k)
+    true_density(fitted_gmm)
+
+#check number of pitches thrown in this case to decide if stable
+def num_pitches_case(pitcher, pitch, b, s, hand):
+    total_df = pd.read_csv("FullPitchData2023.csv")
+    filtered_df = total_df[(total_df["player_name"] == pitcher) & (total_df["balls"] == b) & (total_df["strikes"] == s) & (total_df["pitch_type"] == pitch) & (total_df["stand"] == hand)]
+    filtered_df = filtered_df[["plate_x","plate_z"]]
+    filtered_df = remove_outliers(filtered_df)
+    print(filtered_df.shape[0])
+    
+#visualization in particular case. only use for visualization, likely wont be stable due to low n
+def pitcher_specific_case(pitcher, pitch, b, s, hand):
+    total_df = pd.read_csv("FullPitchData2023.csv")
+    filtered_df = total_df[(total_df["player_name"] == pitcher) & (total_df["balls"] == b) & (total_df["strikes"] == s) & (total_df["pitch_type"] == pitch) & (total_df["stand"] == hand)]
+    filtered_df = filtered_df[["plate_x","plate_z"]]
+    filtered_df = remove_outliers(filtered_df)
+    train, test = train_test_split(filtered_df, test_size=0.2)
+    k = optimal_k(train, test)
+    fitted_gmm = fit_em(bootstrapped_df(filtered_df), k)
+    true_density(fitted_gmm)
+    
+#average control for a pitch type between all qualified pitchers over LHB and RHB for unified number
+def best_overall_control(pitch):
+    left = "-LHB-2023.csv"
+    right = "-RHB-2023.csv"
+    left_df = pd.read_csv(left)
+    right_df = pd.read_csv(right)
+    left_pitchers = left_df["Pitcher"].unique()
+    right_pitchers = right_df["Pitcher"].unique()
+    pitchers = list(set(left_pitchers) & set(right_pitchers))
+    avg_control = []
+    for p in pitchers:
+        avg_control.append((left_df[left_df["Pitcher"] == p].values[0][4] + right_df[right_df["Pitcher"] == p].values[0][4])/2)
+    controls = {"Pitcher":pitchers, "Control":avg_control}
+    ranking = pd.DataFrame(controls)
+    ranking.sort_values(by="Control", ascending=True, inplace=True)
+    filename = pitch + "-Overall-2023.csv"
+    ranking.to_csv(filename)
+    return ranking
