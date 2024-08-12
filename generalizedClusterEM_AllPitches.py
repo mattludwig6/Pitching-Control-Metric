@@ -74,10 +74,10 @@ def control_metric(data, pis, mus, variances):
     return metric / data.shape[0]
 
 def construct_confidence_interval(df):   
-    control_metrics = np.zeros(20)
+    control_metrics = np.zeros(100)
     gmm_dict = {}
     
-    for n in range(20):       
+    for n in range(100): 
         train, test = train_test_split(df, test_size=0.2)
         k = optimal_k(train, test)
         fitted_gmm = fit_em(bootstrapped_df(df), k)
@@ -86,7 +86,7 @@ def construct_confidence_interval(df):
         gmm_dict[control_value] = fitted_gmm
         
     control_metrics = np.sort(control_metrics)
-    return control_metrics[1], control_metrics[18], control_metrics[9], gmm_dict[control_metrics[9]]
+    return control_metrics[4], control_metrics[94], control_metrics[49], gmm_dict[control_metrics[49]]
     
 def single_ranking(total_df, pitch, hand):
     pitch_df = total_df[(total_df["pitch_type"] == pitch) & (total_df["stand"] == hand)]
@@ -99,6 +99,7 @@ def single_ranking(total_df, pitch, hand):
     cov = []
 
     for pitcher in qp:
+        print(pitcher)
         pitcher_df = filter_data(pitch_df, pitcher)
         pitcher_df = remove_outliers(pitcher_df)
         pitcher_df.reset_index(inplace=True,drop=True)
@@ -144,6 +145,7 @@ def specific_control(pitcher, pitch, hand):
         c_value = control_metric(filtered_df, fitted_gmm.weights_, fitted_gmm.means_, fitted_gmm.covariances_)
         controls[i] = c_value
         dist_dict[c_value] = fitted_gmm
+    controls.sort()
     return controls[49], dist_dict[controls[49]]
 
 #visualize the distribution, change name of figure to save as on last line
@@ -194,8 +196,8 @@ def pitcher_specific_case(pitcher, pitch, b, s, hand):
     
 #average control for a pitch type between all qualified pitchers over LHB and RHB for unified number
 def best_overall_control(pitch):
-    left = "-LHB-2023.csv"
-    right = "-RHB-2023.csv"
+    left = "FF-LHB-2023.csv"
+    right = "FF-RHB-2023.csv"
     left_df = pd.read_csv(left)
     right_df = pd.read_csv(right)
     left_pitchers = left_df["Pitcher"].unique()
@@ -207,6 +209,6 @@ def best_overall_control(pitch):
     controls = {"Pitcher":pitchers, "Control":avg_control}
     ranking = pd.DataFrame(controls)
     ranking.sort_values(by="Control", ascending=True, inplace=True)
-    filename = pitch + "-Overall-2023.csv"
+    filename = "Fastball-Overall-2023.csv"
     ranking.to_csv(filename)
     return ranking
