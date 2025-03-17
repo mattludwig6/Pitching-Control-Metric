@@ -74,6 +74,7 @@ def k_fold_cross_validation(data):
     shuffled = data.sample(frac=1)
     split_dfs = np.array_split(shuffled, 5)
 
+    #can't fit gmm with train data of single data point
     if (data.shape[0] < 10):
         return 1
     
@@ -250,6 +251,7 @@ def control(pitcher, pitch, xHB, count_code):
     validation_early_count.reset_index(inplace=True,drop=True)
     train_early_count.reset_index(inplace=True,drop=True)
     
+    #get optimal k from V filtered by count code
     k = k_fold_cross_validation(count_data)
 
     #cm used to get train to get w (need out of sample loss) fitted_gmm is overall centering measure
@@ -294,13 +296,14 @@ def control(pitcher, pitch, xHB, count_code):
     #sort metrics in decreasing order
     metrics.sort()
 
-    return (metrics[4], metrics[95]), metrics[49], dist_to_metric[metrics[49]]
+    median_dist = dist_to_metric[metrics[49]]
+    all_pitch_w_outliers = filter_data(pitcher, pitch, xHB)
+    return control_metric(all_pitch_w_outliers, median_dist["PI"],median_dist["MU"],median_dist["COV"]), median_dist
 
 if __name__ == "__main__":
-	#parameters to control are pitcher, pitch code, handedness of batter, count integer (as in dictionary on line 12)
-    percentiles, median, med_distribution = control("Gore, MacKenzie", "FF", "L", 32)
-    result = ["Gore, MacKenzie",percentiles[0], percentiles[1],median,med_distribution["PI"],med_distribution["MU"],med_distribution["COV"]]
-    with open('FB-2023-32Count-LHB.csv', 'a') as filestream:
+    median, med_distribution = control("Gore, MacKenzie", "FF", "L", 21)
+    result = ["Gore, MacKenzie",median,med_distribution["PI"],med_distribution["MU"],med_distribution["COV"]]
+    with open('FB-2023-21Count-LHB.csv', 'a') as filestream:
         writer_object = writer(filestream)
         writer_object.writerow(result)
         filestream.close()
